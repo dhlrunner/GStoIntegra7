@@ -1,0 +1,47 @@
+//GStoIntegra-7 Non-Drum Mapping File
+//Source MSB,LSB,PC:Destination MSB,LSB,PC
+//PC Number start from 1 
+
+null,null,001:089,064,005 //Piano1
+null,null,002:089,064,005 //Piano 2
+null,null,003:089,064,004 //Piano 3
+null,null,012:089,065,038 //Vibraphone
+null,null,017:089,064,065 //Organ 1
+null,null,018:089,064,067 //Organ 2
+null,null,019:089,064,059 //Organ 3
+null,null,022:089,065,031 //Accordion
+null,null,023:089,065,035 //Harmonica
+null,null,024:089,065,033 //Bandoneon
+null,null,025:089,064,096 //Nylon Gt
+null,null,026:089,065,030 //Steel GT
+null,null,027:089,064,099 //Steel GT
+null,null,028:089,064,091 //Clean GT
+null,null,030:089,064,123 //Overd GT
+null,null,031:089,065,002 //Dist GT
+null,null,033:089,065,007 //Acoustic Bass
+null,null,034:089,065,009 //FingBass
+null,null,035:089,065,015 //PickBass
+null,null,036:089,065,019 //Flatless
+null,null,037:089,065,014 //Slap1
+null,null,038:089,065,014 //Slap2
+null,null,041:089,065,061 //Violin
+null,null,042:089,065,063 //Viola
+null,null,043:089,065,064 //Cello
+null,null,044:089,065,064 //Contrabass
+null,null,045:089,065,084 //Tremolo Str
+null,null,046:089,065,083 //Pizzicato Str
+null,null,049:089,065,080 //String1
+null,null,050:089,065,076 //String2
+null,null,056:095,072,078 //Orch hit
+008,null,081:095,071,078 //Sin wave
+null,null,057:089,065,090 //Trumpet
+null,null,058:089,065,097 //Trombone
+null,null,059:089,065,098 //Tuba
+null,null,060:089,065,100 //Muted TP
+null,null,061:089,065,102 //French horn
+null,null,062:087,066,004 //Brass
+null,null,065:089,065,103 //Sop Sax
+null,null,066:089,065,105 //Alto Sax
+null,null,072:089,065,115 //Clarinet
+
+006,null,121:089,065,002 //Pick Scrape

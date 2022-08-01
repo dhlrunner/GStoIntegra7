@@ -1,0 +1,13 @@
+//GStoIntegra-7 Drum Mapping File
+//Source MSB,LSB,PC:Destination MSB,LSB,PC
+//PC Number start from 1
+
+000,null,001:088,064,006 //Standard
+000,null,002:088,064,015 //Standard 2
+000,null,026:092,015,009 //808
+000,null,029:092,015,010 //606/707
+000,null,033:088,064,007 //Jazz
+000,null,034:088,064,008 //Jazz L/R
+000,null,041:088,064,009 //Brush
+000,null,049:088,064,021 //Orchestra
+null,null,null:088,064,001 //Else
