@@ -8,9 +8,29 @@ using Melanchall.DryWetMidi.Common;
 using Melanchall.DryWetMidi.Interaction;
 using Melanchall.DryWetMidi.Core;
 using Melanchall.DryWetMidi.Multimedia;
+using System.IO;
 
 namespace GStoIntegra7
 {
+    class PCMap
+    {
+        public byte? SbankMSB;
+        public byte? SbankLSB;
+        public byte? SProgramNum;
+        public byte DbankMSB;
+        public byte DbankLSB;
+        public byte DProgramNum;
+
+        public PCMap(byte? sbankMSB, byte? sbankLSB, byte? sProgramNum, byte dbankMSB, byte dbankLSB, byte dProgramNum)
+        {
+            SbankMSB = sbankMSB;
+            SbankLSB = sbankLSB;
+            SProgramNum = sProgramNum;
+            DbankMSB = dbankMSB;
+            DbankLSB = dbankLSB;
+            DProgramNum = dProgramNum;
+        }
+    }
     class MidiProgramChange
     {
         public byte? bankLSB;
@@ -49,9 +69,11 @@ namespace GStoIntegra7
         }
 
         /// <summary>
-        /// null = always true
+        /// Program Change이벤트 비교
+        /// MSB,LSB,Program ID비교
+        /// null인 경우는 비교 대상에 추가하지 않음
         /// </summary>
-        /// <param name="p">mpc</param>
+        /// <param name="p"></param>
         /// <returns></returns>
         public bool Equals(MidiProgramChange p)
         {
@@ -71,6 +93,8 @@ namespace GStoIntegra7
         static InputDevice inputDeviceA = null;
         static  OutputDevice outputDeviceA = null;
         static PCevent[] PC = new PCevent[16];
+        static List<PCMap> non_drum_map = new List<PCMap>();
+        static List<PCMap> drum_map = new List<PCMap>();
 
         static void Main(string[] args)
         {
@@ -79,35 +103,107 @@ namespace GStoIntegra7
             {
                 PC[i] = new PCevent();
             }
-            {
-                Console.WriteLine("Select input midi device:");
-                for (int i = 0; i < InputDevice.GetDevicesCount(); i++)
-                {
-                    InputDevice midid = InputDevice.GetByIndex(i);
-                    Console.WriteLine("[" + i + "]" + midid.Name);
-                }
-                Console.Write("> ");
-                string r = Console.ReadLine();
-                inputDeviceA = InputDevice.GetByIndex(int.Parse(r));
-                inputDeviceA.EventReceived += OnEventReceivedA;
-                Console.WriteLine(inputDeviceA.Name + " selected.");
-                
-            }
-            {
-                Console.WriteLine("Select output midi device:");
 
-                for (int i = 0; i < OutputDevice.GetDevicesCount(); i++)
+            try
+            {
+                parsePCMapFromFile(non_drum_map, "./nondrum.map");
+                parsePCMapFromFile(drum_map, "./drum.map");
+
+                Console.WriteLine("Midi Program Change Map Parsed. non-drum:{0}, drum:{1}", non_drum_map.Count, drum_map.Count);
+            }
+            catch (Exception ex)
+            {
+                
+                Console.WriteLine(ex.Message);
+                return;
+            }
+
+            //input 장치 없을 경우 종료
+            if (InputDevice.GetDevicesCount() <= 0)
+            {
+                Console.WriteLine("No input devices found");
+                return;
+            }
+
+            //input 장치 선택
+            {
+                int sel = -1;
+                while (sel < 0)
                 {
-                    OutputDevice midid = OutputDevice.GetByIndex(i);
-                    Console.WriteLine("[" + i + "]" + midid.Name);
+                    Console.WriteLine("Select input midi device:");
+                    for (int i = 0; i < InputDevice.GetDevicesCount(); i++)
+                    {
+                        InputDevice midid = InputDevice.GetByIndex(i);
+                        Console.WriteLine("[" + i + "]" + midid.Name);
+                    }
+                    Console.Write("> ");
+                    string r = Console.ReadLine();
+                    if (int.TryParse(r, out sel))
+                    {
+                        if (sel < InputDevice.GetDevicesCount())
+                        {
+                            inputDeviceA = InputDevice.GetByIndex(sel);
+                        }
+                        else
+                        {
+                            sel = -1;
+                            Console.WriteLine("Invalid selection.");
+                        }
+                        
+                    }
+                    else
+                    {
+                        sel = -1;
+                        Console.WriteLine("Invalid selection.");
+                    }
                 }
-                Console.Write("> ");
-                string r = Console.ReadLine();
-                outputDeviceA = OutputDevice.GetByIndex(int.Parse(r));
+                Console.WriteLine(inputDeviceA.Name + " selected.");
+
+            }
+            
+            //output 장치 선택
+            {
+                int sel = -1;
+                while (sel < 0)
+                {
+                    Console.WriteLine("Select output midi device:");
+                    for (int i = 0; i < OutputDevice.GetDevicesCount(); i++)
+                    {
+                        OutputDevice midid = OutputDevice.GetByIndex(i);
+                        Console.WriteLine("[" + i + "]" + midid.Name);
+                    }
+                    Console.Write("> ");
+                    string r = Console.ReadLine();
+                    if (int.TryParse(r, out sel))
+                    {
+                        if (sel < OutputDevice.GetDevicesCount())
+                        {
+                            outputDeviceA = OutputDevice.GetByIndex(sel);
+                        }
+                        else
+                        {
+                            sel = -1;
+                            Console.WriteLine("Invalid selection.");
+                        }
+                    }
+                    else
+                    {
+                        sel = -1;
+                        Console.WriteLine("Invalid selection.");
+                    }
+                }                                        
                 Console.WriteLine(outputDeviceA.Name + " selected.");
 
             }
+            Console.WriteLine("Input device: " + inputDeviceA.Name);
+            Console.WriteLine("Output device: " + outputDeviceA.Name);
+            inputDeviceA.EventReceived += OnEventReceivedA;
             inputDeviceA.StartEventsListening();
+
+            //Expansion 셋 전송
+            Console.WriteLine("Sending Expansion set parameter..");
+            outputDeviceA.SendEvent(new NormalSysExEvent(new byte[] { 0x41, 0x10, 0x00, 0x00, 0x64, 0x11, 0x0F, 0x00, 0x30, 0x00, 0x05, 0x0D, 0x08, 0x12, 0x15, 0xF7 }));
+
             Console.WriteLine("Listening...");
             
 
@@ -128,26 +224,16 @@ namespace GStoIntegra7
         }
         private static void OnEventReceivedA(object sender, MidiEventReceivedEventArgs e)
         {
-            //Console.WriteLine(e.Event.EventType);
-            //MidiEventToBytesConverter x = new MidiEventToBytesConverter();
-            //ChannelEvent ev = ((ChannelEvent)e.Event);
-
-            //Console.WriteLine(data.Length);
             if (e.Event.EventType == MidiEventType.ControlChange)
             {
-                //byte[] data = x.Convert(e.Event);
-                ControlChangeEvent controlChangeEvent = (ControlChangeEvent)e.Event;
-                
+                ControlChangeEvent controlChangeEvent = (ControlChangeEvent)e.Event;           
                 if (controlChangeEvent.ControlNumber == 0x20) //LSB
                 {
                     PC[controlChangeEvent.Channel].Program.bankLSB = controlChangeEvent.ControlValue;
-                    //PC.bankLSB = data[2];
-                    //Console.WriteLine("{0} {1} {2}", data[0], data[1], data[2]);
                 }
                 else if (controlChangeEvent.ControlNumber == 0) //MSB
                 {
                     PC[controlChangeEvent.Channel].Program.bankMSB = controlChangeEvent.ControlValue;
-                    //Console.WriteLine("{0} {1} {2}", data[0], data[1], data[2]);
                 }
                 else
                 {
@@ -162,165 +248,46 @@ namespace GStoIntegra7
                 PC[pce.Channel].Program.PCNum = pce.ProgramNumber;
                 PC[pce.Channel].chan = pce.Channel;
                 Console.WriteLine(PC[pce.Channel].ToString());
-
-                if(pce.Channel == 9)
+                
+                //TODO: SysEx로 드럼 채널 판정             
+                if (pce.Channel == 9 ||pce.Channel == 10)
                 {
-                    if (PC[pce.Channel].Equals(new MidiProgramChange(0, null, 0)))
+                    foreach (PCMap map in drum_map)
                     {
-                        sendPCEvent(pce.Channel, 88, 64, 5);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 88, 64, 5", PC[pce.Channel].ToString(),pce.Channel);
-                        return;
-                    }
-                    else
-                    {
-                        sendPCEvent(pce.Channel, 88, 64, 0);
-                        return;
-                    }
-                }
-                else if (pce.Channel == 10)
-                {
-                    if (PC[pce.Channel].Equals(new MidiProgramChange(0, null, 0)))
-                    {
-                        sendPCEvent(pce.Channel, 88, 64, 5);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 88, 64, 5", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
-                    }
-                    else
-                    {
-                        sendPCEvent(pce.Channel, 88, 64, 0);
-                        return;
-                    }
+                        if (PC[pce.Channel].Equals(new MidiProgramChange(map.SbankMSB, map.SbankLSB, map.SProgramNum)))
+                        {
+                            sendPCEvent(pce.Channel, map.DbankMSB, map.DbankLSB, map.DProgramNum);
+                            Console.WriteLine("Cn:{1} PC Change {0} to {2},{3},{4}", PC[pce.Channel].ToString(), pce.Channel, map.DbankMSB, map.DbankLSB, map.DProgramNum);
+                            return;
+                        }
+                    }          
                 }
                 else
                 {
-                    if (PC[pce.Channel].Equals(new MidiProgramChange(null, null, 0))) //Piano 1
+                    //Program Change 변환 부분
+                    foreach(PCMap map in non_drum_map)
                     {
-                        Console.WriteLine("Non-Drum");
-                        sendPCEvent(pce.Channel, 89, 64, 0);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 89, 64, 1", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
+                        if (PC[pce.Channel].Equals(new MidiProgramChange(map.SbankMSB,map.SbankLSB,map.SProgramNum))) 
+                        {                          
+                            sendPCEvent(pce.Channel, map.DbankMSB,map.DbankLSB,map.DProgramNum);
+                            Console.WriteLine("Cn:{1} PC Change {0} to {2},{3},{4}", PC[pce.Channel].ToString(), pce.Channel, map.DbankMSB, map.DbankLSB, map.DProgramNum);
+                            
+                            if (PC[pce.Channel].Equals(new MidiProgramChange(8, null, 80))) //Sin wave
+                            {
+                                //기본 프리셋이 Mono 모드이기 때문에 CC 127 신호로 Poly모드로 바꿔준다
+                                ControlChangeEvent c = new ControlChangeEvent();
+                                c.ControlNumber = (SevenBitNumber)0x7F;
+                                c.ControlValue = (SevenBitNumber)0x7F;
+                                Console.WriteLine("Set to Poly mode");
+                                outputDeviceA.SendEvent(c);
+                            }
+                            
+                            return;
+                        }
                     }
-                    else if (PC[pce.Channel].Equals(new MidiProgramChange(null, null, 1))) //Piano 2
-                    {
-                        Console.WriteLine("Non-Drum");
-                        sendPCEvent(pce.Channel, 89, 64, 4);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 89, 64, 5", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
-                    }
-                    else if (PC[pce.Channel].Equals(new MidiProgramChange(null, null, 1))) //Piano 3
-                    {
-                        Console.WriteLine("Non-Drum");
-                        sendPCEvent(pce.Channel, 89, 64, 3);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 89, 64, 5", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
-                    }
-                    else if (PC[pce.Channel].Equals(new MidiProgramChange(null, null, 18))) //Organ 3
-                    {
-                        Console.WriteLine("Non-Drum");
-                        sendPCEvent(pce.Channel, 89, 64, 58);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 89, 64, 58", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
-                    }
-                    else if (PC[pce.Channel].Equals(new MidiProgramChange(null, null, 22))) //Harmonica
-                    {
-                        Console.WriteLine("Non-Drum");
-                        sendPCEvent(pce.Channel, 89, 65, 34);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 89, 65, 34", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
-                    }
-                    else if (PC[pce.Channel].Equals(new MidiProgramChange(null, null, 25))) //Steel
-                    {
-                        Console.WriteLine("Non-Drum");
-                        sendPCEvent(pce.Channel, 89, 65, 29);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 89, 65, 29", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
-                    }
-                    else if (PC[pce.Channel].Equals(new MidiProgramChange(null, null, 27))) //Clean
-                    {
-                        Console.WriteLine("Non-Drum");
-                        sendPCEvent(pce.Channel, 89, 64, 90);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 89, 64, 90", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
-                    }
-                    else if (PC[pce.Channel].Equals(new MidiProgramChange(null, null, 30))) //Dist GT
-                    {
-                        Console.WriteLine("Non-Drum");
-                        sendPCEvent(pce.Channel, 89, 65, 1);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 89, 65, 1", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
-                    }
-                    else if (PC[pce.Channel].Equals(new MidiProgramChange(null, null, 32))) //Acoustic Bass
-                    {
-                        Console.WriteLine("Non-Drum");
-                        sendPCEvent(pce.Channel, 89, 65, 6);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 89, 65, 7", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
-                    }
-                    else if (PC[pce.Channel].Equals(new MidiProgramChange(null, null, 33))) //FingBass
-                    {
-                        Console.WriteLine("Non-Drum");
-                        sendPCEvent(pce.Channel, 89, 65, 8);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 89, 65, 9", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
-                    }
-                    else if (PC[pce.Channel].Equals(new MidiProgramChange(null, null, 34))) //Pickbass
-                    {
-                        Console.WriteLine("Non-Drum");
-                        sendPCEvent(pce.Channel, 89, 65, 14);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 89, 65, 15", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
-                    }
-                    else if (PC[pce.Channel].Equals(new MidiProgramChange(null, null, 35))) //Flatless
-                    {
-                        Console.WriteLine("Non-Drum");
-                        sendPCEvent(pce.Channel, 89, 65, 18);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 89, 65, 19", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
-                    }
-                    else if (PC[pce.Channel].Equals(new MidiProgramChange(null, null, 36))) //Slap1 
-                    {
-                        Console.WriteLine("Non-Drum");
-                        sendPCEvent(pce.Channel, 89, 65, 13);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 89, 65, 19", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
-                    }
-
-                    else if (PC[pce.Channel].Equals(new MidiProgramChange(null, null, 37))) //Slap2 
-                    {
-                        Console.WriteLine("Non-Drum");
-                        sendPCEvent(pce.Channel, 89, 65, 13);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 89, 65, 19", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
-                    }
-
-                    else if (PC[pce.Channel].Equals(new MidiProgramChange(null, null, 48))) //String1
-                    {
-                        Console.WriteLine("Non-Drum");
-                        sendPCEvent(pce.Channel, 89, 65, 74);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 89, 65, 74", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
-                    }
-                    else if (PC[pce.Channel].Equals(new MidiProgramChange(null, null, 49))) //String1
-                    {
-                        Console.WriteLine("Non-Drum");
-                        sendPCEvent(pce.Channel, 89, 65, 75);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 89, 65, 75", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
-                    }
-                    else if (PC[pce.Channel].Equals(new MidiProgramChange(null, null, 64))) //Sop sax
-                    {
-                        Console.WriteLine("Non-Drum");
-                        sendPCEvent(pce.Channel, 89, 65, 102);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 89, 65, 102", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
-                    }
-                    else if (PC[pce.Channel].Equals(new MidiProgramChange(null, null, 71))) //Clarinet
-                    {
-                        Console.WriteLine("Non-Drum");
-                        sendPCEvent(pce.Channel, 89, 65, 114);
-                        Console.WriteLine("Cn:{1} PC Change {0} to 89, 65, 114", PC[pce.Channel].ToString(), pce.Channel);
-                        return;
-                    }
+                    
+                    
+                    
                 }
 
                 outputDeviceA.SendEvent(pce);
@@ -329,19 +296,58 @@ namespace GStoIntegra7
             else if (e.Event.EventType == MidiEventType.NoteOn)
             {
                 NoteOnEvent noteOn = (NoteOnEvent)e.Event;
-                if(noteOn.Channel == 9 || noteOn.Channel == 10)
+                if(noteOn.Channel == 9 || noteOn.Channel == 10) //TODO: SysEx로 드럼 채널 판정
                 {
-                    if(noteOn.NoteNumber == 0x39 || noteOn.NoteNumber == 0x31)
+                    
+                    if (noteOn.Velocity != 0) //Note OFF가 Note On신호의 벨로시티 0인 경우도 있기 때문
                     {
-                        short velOrig = noteOn.Velocity;
-                        short vel = (short)(velOrig + 30);
-                        if (vel > 0x7f) vel = 0x7f;
-                        noteOn.Velocity = (SevenBitNumber)vel;
-                        Console.WriteLine("drum note vel change: {0} -> {1}, note: {2}", velOrig,vel,noteOn.NoteNumber);
+                        //Crash 심벌 벨로시티가 낮으면 SuperNatural 드럼에서는 너무 작게 들리기 때문에 이를 조정해준다. (약 +40 정도가 적당)
+                        if (noteOn.NoteNumber == 0x39 || noteOn.NoteNumber == 0x31)
+                        {
+                            short velOrig = noteOn.Velocity;
+                            short vel = (short)(velOrig + 40);
+                            if (vel > 0x7f) vel = 0x7f;
+                            noteOn.Velocity = (SevenBitNumber)vel;
+                            Console.WriteLine("drum note vel change: {0} -> {1}, note: {2}", velOrig, vel, noteOn.NoteNumber);
+                        }
+                        else if(noteOn.NoteNumber == 0x28) //스네어 소리 조절
+                        {
+                            short velOrig = noteOn.Velocity;
+                            short vel = (short)(velOrig - 20);
+                            if (vel < 1) vel = 1;
+                            noteOn.Velocity = (SevenBitNumber)vel;
+                            Console.WriteLine("drum note vel change: {0} -> {1}, note: {2}", velOrig, vel, noteOn.NoteNumber);
+                        }
+
+                    }
+                    
+                    
+                }
+                else 
+                {
+                    if(PC[noteOn.Channel].Equals(new MidiProgramChange(6, null, 120)))
+                    {
+                        byte note = (byte)noteOn.NoteNumber;
+                        byte Cnote = (byte)noteOn.NoteNumber;
+                        if(Cnote > 0x18) Cnote = 0x18;
+                        noteOn.NoteNumber = (SevenBitNumber)Cnote;
+                        Console.WriteLine("Pick Scrape note change {0} -> {1}",note,Cnote);
                     }
                     
                 }
                 outputDeviceA.SendEvent(noteOn);
+            }
+            else if(e.Event.EventType == MidiEventType.NormalSysEx)
+            {
+                NormalSysExEvent nse = (NormalSysExEvent)e.Event;
+                //print sysex hex string from NormalSysExEvent
+                string hexString = "";
+                foreach (byte b in nse.Data)
+                {
+                    hexString += b.ToString("X2") + " ";
+                }
+                Console.WriteLine("SysEx: {0}", hexString);
+                outputDeviceA.SendEvent(e.Event);
             }
             else
             {
@@ -350,6 +356,60 @@ namespace GStoIntegra7
             
         }
 
+        static void parsePCMapFromFile(List<PCMap> pc, string filename)
+        {
+            if (File.Exists(filename))
+            {
+                pc.Clear();
+                string[] lines = File.ReadAllLines(filename);
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    string line = lines[i];
+
+                    
+                    if (line.Contains("//")) //주석
+                    {
+                        //split string by
+                        line = line.Split(new string[] { "//" }, StringSplitOptions.None)[0];
+                    }
+
+                    line = line.Trim();
+                    
+                    if (line.Length > 0)
+                    {
+                        string[] split = line.Split(':');
+                        if(split.Length > 1)
+                        {
+                            string[] source = split[0].Split(',');
+                            string[] dest = split[1].Split(',');
+
+                            if (source.Length > 2 && dest.Length > 2)
+                            {
+                                byte? sM = source[0].ToLower() == "null" ? (byte?)null : byte.Parse(source[0]);
+                                byte? sL = source[1].ToLower() == "null" ? (byte?)null : byte.Parse(source[1]);
+                                byte? sPC = source[2].ToLower() == "null" ? (byte?)null : (byte)(byte.Parse(source[2]) - 1);
+
+                                byte dM =  byte.Parse(dest[0]);
+                                byte dL = byte.Parse(dest[1]);
+                                byte dPC = (byte)(byte.Parse(dest[2]) - 1);
+
+                                pc.Add(new PCMap(sM, sL, sPC, dM, dL, dPC));
+                            }
+                            else
+                            {
+                                throw new Exception($"PCMap file format error at Line {i+1}");
+                            }
+                        }
+                        else { throw new Exception($"PCMap file format error at Line {i + 1}"); }
+                    }
+                    
+                }
+            }
+            else
+            {
+                throw new FileNotFoundException($"{filename} not found.");
+            }
+        }
         static void sendPCEvent(byte ChanNum, byte MSB, byte LSB, byte PC)
         {
             //MSB
@@ -380,14 +440,5 @@ namespace GStoIntegra7
 
             }
         }
-    }
-
-
-
-    static class GSProgram
-    {
-        static MidiProgramChange Piano0_1 = new MidiProgramChange(0,0,0);
-        static MidiProgramChange Piano0_2 = new MidiProgramChange(0,0,0);
-        static MidiProgramChange DrumStd = new MidiProgramChange(0, 0, 0);
     }
 }
